@@ -158,14 +158,29 @@ export async function fetchActiveWorkflowIds(
   owner: string,
   repo: string,
 ): Promise<Set<number>> {
-  const workflows = await octokit.paginate(octokit.actions.listRepoWorkflows, {
-    owner,
-    repo,
-    per_page: 100,
-  });
-  return new Set(
-    workflows.filter((w) => w.state === "active").map((w) => w.id),
-  );
+  const ids = new Set<number>();
+  let page = 1;
+
+  // Do not use octokit.paginate here. It mutates response.data while
+  // normalizing the workflows collection, which also mutates the ETag hook's
+  // cached object and turns later 304 responses into an empty collection.
+  while (true) {
+    const { data } = await octokit.actions.listRepoWorkflows({
+      owner,
+      repo,
+      per_page: 100,
+      page,
+    });
+
+    for (const workflow of data.workflows) {
+      if (workflow.state === "active") ids.add(workflow.id);
+    }
+
+    if (data.workflows.length < 100 || page * 100 >= data.total_count) break;
+    page++;
+  }
+
+  return ids;
 }
 
 /**

@@ -2,6 +2,7 @@ import { Octokit } from "@octokit/rest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { EtagCache, installEtagHook } from "../etagCache.js";
 import {
   createRunsOctokit,
   fetchActiveWorkflowIds,
@@ -323,5 +324,44 @@ describe("fetchActiveWorkflowIds", () => {
     const ids = await fetchActiveWorkflowIds(makeOctokit(), "owner", "repo");
     expect(ids).toEqual(new Set([100, 200]));
     expect(ids.has(300)).toBe(false);
+  });
+
+  it("preserves workflow IDs across an ETag-backed 304", async () => {
+    const etag = '"workflows-v1"';
+    let requests = 0;
+    server.use(
+      http.get(
+        "https://api.github.com/repos/owner/repo/actions/workflows",
+        ({ request }) => {
+          requests++;
+          if (request.headers.get("if-none-match") === etag) {
+            return new HttpResponse(null, { status: 304 });
+          }
+          return HttpResponse.json(
+            {
+              total_count: 2,
+              workflows: [
+                { id: 100, state: "active" },
+                { id: 200, state: "active" },
+              ],
+            },
+            { headers: { etag } },
+          );
+        },
+      ),
+    );
+
+    const octokit = makeOctokit();
+    const cache = new EtagCache();
+    installEtagHook(octokit, cache);
+
+    expect(await fetchActiveWorkflowIds(octokit, "owner", "repo")).toEqual(
+      new Set([100, 200]),
+    );
+    expect(await fetchActiveWorkflowIds(octokit, "owner", "repo")).toEqual(
+      new Set([100, 200]),
+    );
+    expect(requests).toBe(2);
+    expect(cache.hits()).toBe(1);
   });
 });

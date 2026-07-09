@@ -21,6 +21,10 @@ token:
   Its request hook strips conditional validators and sends
   `Cache-Control: no-cache`, preventing the long-lived process or an
   intermediary from reusing stale transition state.
+- `fetchActiveWorkflowIds` retains ETag caching but uses explicit page reads.
+  Octokit's paginator mutates the cached workflow-list response, causing the
+  first 304 refresh to produce an empty active-ID set and filter out every
+  fresh run. The explicit loop leaves cached metadata intact.
 
 No token logging, persistence, new API permissions, or new outbound destination
 is introduced. Both clients talk to `api.github.com` through `@octokit/rest`.
@@ -48,10 +52,12 @@ is introduced. Both clients talk to `api.github.com` through `@octokit/rest`.
 3. Pass `runsOctokit` separately through `fetchAllRuns` and remove the
    `SKIP_ETAG_CACHE_HEADER` marker from the Actions-runs request in
    `src/services/github.ts`.
-4. Re-apply the regression assertions in
+4. Keep the explicit pagination loop in `fetchActiveWorkflowIds`; do not
+   replace it with `octokit.paginate` while metadata uses the ETag hook.
+5. Re-apply the regression assertions in
    `src/services/__tests__/refreshRepoActive.test.ts` and
    `src/services/__tests__/github-api.test.ts`.
-5. Run `npm audit --omit=dev`, formatting, lint, all tests, and the production
+6. Run `npm audit --omit=dev`, formatting, lint, all tests, and the production
    build before deployment.
-6. Remove this patch and return to the clean upstream package once issue #4 is
+7. Remove this patch and return to the clean upstream package once issue #4 is
    fixed and the same live failure-transition acceptance test passes upstream.
