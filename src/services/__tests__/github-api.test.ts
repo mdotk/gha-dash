@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
+  createRunsOctokit,
   fetchActiveWorkflowIds,
   fetchRepoMeta,
   fetchWorkflowRuns,
@@ -224,11 +225,15 @@ describe("fetchWorkflowRuns", () => {
 
   it("does not add a conditional header to the uncached runs client", async () => {
     const seenIfNoneMatch: (string | null)[] = [];
+    const seenIfModifiedSince: (string | null)[] = [];
+    const seenCacheControl: (string | null)[] = [];
     server.use(
       http.get(
         "https://api.github.com/repos/owner/repo/actions/runs",
         ({ request }) => {
           seenIfNoneMatch.push(request.headers.get("if-none-match"));
+          seenIfModifiedSince.push(request.headers.get("if-modified-since"));
+          seenCacheControl.push(request.headers.get("cache-control"));
           return HttpResponse.json(
             {
               total_count: 1,
@@ -245,9 +250,15 @@ describe("fetchWorkflowRuns", () => {
       ),
     );
 
-    const runs = await fetchWorkflowRuns(makeOctokit(), "owner", "repo");
+    const runs = await fetchWorkflowRuns(
+      createRunsOctokit("test-token"),
+      "owner",
+      "repo",
+    );
 
     expect(seenIfNoneMatch).toEqual([null]);
+    expect(seenIfModifiedSince).toEqual([null]);
+    expect(seenCacheControl).toEqual(["no-cache"]);
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe("in_progress");
   });

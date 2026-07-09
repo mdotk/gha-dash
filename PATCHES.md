@@ -18,6 +18,9 @@ token:
   counts, and rate-limit checks.
 - `runsOctokit` never receives the ETag hook and is used only by
   `actions.listWorkflowRunsForRepo` during full, manual, and active refreshes.
+  Its request hook strips conditional validators and sends
+  `Cache-Control: no-cache`, preventing the long-lived process or an
+  intermediary from reusing stale transition state.
 
 No token logging, persistence, new API permissions, or new outbound destination
 is introduced. Both clients talk to `api.github.com` through `@octokit/rest`.
@@ -39,8 +42,9 @@ is introduced. Both clients talk to `api.github.com` through `@octokit/rest`.
 ### Re-apply after an upstream update
 
 1. Create a branch from the new upstream release.
-2. Re-apply the `runsOctokit` state field, initialization, 401-token refresh,
-   and the three `fetchWorkflowRuns` call sites in `src/state.ts`.
+2. Re-apply `createRunsOctokit`, including its runs-only no-cache hook, plus
+   the `runsOctokit` state field, initialization, 401-token refresh, and the
+   three `fetchWorkflowRuns` call sites in `src/state.ts`.
 3. Pass `runsOctokit` separately through `fetchAllRuns` and remove the
    `SKIP_ETAG_CACHE_HEADER` marker from the Actions-runs request in
    `src/services/github.ts`.

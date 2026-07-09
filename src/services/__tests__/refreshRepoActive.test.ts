@@ -22,6 +22,7 @@ import {
 import { defaultConfig, type WorkflowRun } from "../../types.js";
 import { Cache } from "../cache.js";
 import { EtagCache, installEtagHook } from "../etagCache.js";
+import { createRunsOctokit } from "../github.js";
 
 const server = setupServer();
 
@@ -47,10 +48,7 @@ function makeState(): AppState {
     auth: "test-token",
     baseUrl: "https://api.github.com",
   });
-  const runsOctokit = new Octokit({
-    auth: "test-token",
-    baseUrl: "https://api.github.com",
-  });
+  const runsOctokit = createRunsOctokit("test-token");
   const etagCache = new EtagCache();
   installEtagHook(octokit, etagCache);
   return {

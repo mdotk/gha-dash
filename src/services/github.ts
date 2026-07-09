@@ -27,6 +27,27 @@ export function createOctokit(token: string): Octokit {
   return new Octokit({ auth: token });
 }
 
+/**
+ * Create the Actions-runs client. Runs are monitoring state, so every request
+ * must bypass conditional and intermediary caches; see upstream issue #4.
+ */
+export function createRunsOctokit(token: string): Octokit {
+  const octokit = createOctokit(token);
+
+  octokit.hook.before("request", (options) => {
+    const headers = { ...options.headers } as Record<string, string>;
+    for (const name of Object.keys(headers)) {
+      if (/^(if-none-match|if-modified-since)$/i.test(name)) {
+        delete headers[name];
+      }
+    }
+    headers["cache-control"] = "no-cache";
+    options.headers = headers as typeof options.headers;
+  });
+
+  return octokit;
+}
+
 export async function fetchAuthenticatedUser(
   octokit: Octokit,
 ): Promise<string> {

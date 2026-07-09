@@ -6,6 +6,7 @@ import { EtagCache, installEtagHook } from "./services/etagCache.js";
 import type { RepoStats } from "./services/github.js";
 import {
   createOctokit,
+  createRunsOctokit,
   extractToken,
   fetchActiveWorkflowIds,
   fetchAllRuns,
@@ -62,7 +63,7 @@ export function getAppState(): AppState {
 export async function initAppState(): Promise<AppState> {
   const token = extractToken();
   const octokit = createOctokit(token);
-  const runsOctokit = createOctokit(token);
+  const runsOctokit = createRunsOctokit(token);
   const etagCache = new EtagCache();
   installEtagHook(octokit, etagCache);
 
@@ -244,7 +245,7 @@ async function doRefresh(): Promise<void> {
       try {
         const newToken = extractToken();
         state.octokit = createOctokit(newToken);
-        state.runsOctokit = createOctokit(newToken);
+        state.runsOctokit = createRunsOctokit(newToken);
         installEtagHook(state.octokit, state.etagCache);
         console.log("Re-extracted GitHub token after 401");
       } catch {
