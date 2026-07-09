@@ -47,11 +47,16 @@ function makeState(): AppState {
     auth: "test-token",
     baseUrl: "https://api.github.com",
   });
+  const runsOctokit = new Octokit({
+    auth: "test-token",
+    baseUrl: "https://api.github.com",
+  });
   const etagCache = new EtagCache();
   installEtagHook(octokit, etagCache);
   return {
     config: { ...defaultConfig },
     octokit,
+    runsOctokit,
     etagCache,
     username: "test-user",
     cache: new Cache<WorkflowRun[]>(300),
@@ -231,7 +236,7 @@ describe("refreshRepoActive", () => {
     expect(entry?.error).toContain("rate limit"); // error noted
   });
 
-  it("bypasses If-None-Match even when an ETag is cached for the runs endpoint", async () => {
+  it("uses the uncached runs client even when metadata has a runs ETag", async () => {
     // Regression: conditional requests against the runs endpoint have been
     // observed returning 304 while a run's status actually changed on the
     // server, leaving the dashboard stuck on "queued" for the run's lifetime.
@@ -278,12 +283,12 @@ describe("refreshRepoActive", () => {
 
     await refreshRepoActive("owner/repo");
 
-    // The request must go out WITHOUT If-None-Match, and fresh data wins.
+    // The dedicated runs client sends no If-None-Match, and fresh data wins.
     expect(seenIfNoneMatch).toEqual([null]);
     const entry = state.cache.get("owner/repo");
     expect(entry?.data[0].status).toBe("in_progress");
-    // Cache should also have been refreshed with the new ETag.
-    expect(state.etagCache.get(key)?.etag).toBe('"runs-v2"');
+    // Run polling never reads from or writes to the metadata ETag cache.
+    expect(state.etagCache.get(key)?.etag).toBe('"runs-v1"');
   });
 
   it("is a no-op when state is null", async () => {

@@ -2,7 +2,6 @@ import { Octokit } from "@octokit/rest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { EtagCache, installEtagHook } from "../etagCache.js";
 import {
   fetchActiveWorkflowIds,
   fetchRepoMeta,
@@ -223,13 +222,7 @@ describe("fetchWorkflowRuns", () => {
     expect(runs).toHaveLength(4);
   });
 
-  it("never sends If-None-Match on the runs endpoint, even with a cached ETag", async () => {
-    // GitHub's actions/runs ETag has been observed returning 304 while a
-    // run's status actually changed (queued → in_progress, or a new run
-    // arrived). The dashboard then sticks on stale data, which is why the
-    // refresh button "doesn't refresh" and auto-refresh "sometimes works."
-    // fetchWorkflowRuns must always bypass the ETag cache regardless of
-    // whether a cached entry exists.
+  it("does not add a conditional header to the uncached runs client", async () => {
     const seenIfNoneMatch: (string | null)[] = [];
     server.use(
       http.get(
@@ -252,31 +245,11 @@ describe("fetchWorkflowRuns", () => {
       ),
     );
 
-    const cache = new EtagCache();
-    const octokit = makeOctokit();
-    installEtagHook(octokit, cache);
-
-    // Prime cache with a stale ETag for this URL — a conditional request
-    // would 304 here and return the empty stale body.
-    const key = EtagCache.keyFor({
-      method: "GET",
-      url: "/repos/{owner}/{repo}/actions/runs",
-      owner: "owner",
-      repo: "repo",
-      per_page: 100,
-    });
-    cache.set(key, {
-      etag: '"runs-v1"',
-      data: { total_count: 0, workflow_runs: [] },
-    });
-
-    const runs = await fetchWorkflowRuns(octokit, "owner", "repo");
+    const runs = await fetchWorkflowRuns(makeOctokit(), "owner", "repo");
 
     expect(seenIfNoneMatch).toEqual([null]);
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe("in_progress");
-    // Cache should be refreshed with the new ETag for any future opt-in caller.
-    expect(cache.get(key)?.etag).toBe('"runs-v2"');
   });
 
   it("computes duration for completed runs", async () => {
