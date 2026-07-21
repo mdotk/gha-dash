@@ -72,6 +72,39 @@ export interface WorkflowDispatchInfo {
   inputs: DispatchInput[];
 }
 
+export interface CoolifyDeploymentSummary {
+  uuid: string;
+  status: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface CoolifyResourceSummary {
+  uuid: string;
+  name: string;
+  type: string;
+  status: string;
+  project: string;
+  environment: string;
+  image: string | null;
+  imageTag: string | null;
+  repository: string | null;
+  registered: boolean;
+  dashboardUrl: string;
+  activeDeployment: CoolifyDeploymentSummary | null;
+  latestDeployment: CoolifyDeploymentSummary | null;
+}
+
+export interface CoolifySnapshot {
+  schemaVersion: 1;
+  source: "https://app.coolify.io";
+  generatedAt: string;
+  lastAttemptAt: string;
+  staleAfterSeconds: number;
+  error: string | null;
+  resources: CoolifyResourceSummary[];
+}
+
 /** Effective status for display: merges status + conclusion */
 export function displayStatus(run: WorkflowRun): string {
   if (run.status === "completed" && run.conclusion) {

@@ -61,3 +61,25 @@ is introduced. Both clients talk to `api.github.com` through `@octokit/rest`.
    build before deployment.
 7. Remove this patch and return to the clean upstream package once issue #4 is
    fixed and the same live failure-transition acceptance test passes upstream.
+
+## Hosted Coolify deployment state
+
+The maintained fork can display a versioned, sanitized Coolify Cloud snapshot
+above the GitHub Actions table. API access deliberately remains outside this
+process: a separate least-privilege collector owns the team-scoped `read`
+token, and `gha-dash` only reads `/var/lib/coolify-monitor/state.json`.
+
+The `/api/coolify` route validates the complete snapshot contract, rejects
+unexpected origins and malformed fields, disables HTTP caching, and never
+accepts a token. The Vue panel shows current resource health, immutable image
+tags or repositories, active and latest deployments, stale-state warnings, and
+resources that are not yet registered in the infrastructure inventory.
+
+The source lock also resolves `body-parser` to `2.3.0`, clearing
+`GHSA-v422-hmwv-36x6`; `npm audit --omit=dev` remains a zero-vulnerability ship
+gate.
+
+When rebasing, re-apply the snapshot types, validator/reader, read-only route,
+client composable and panel, then rerun the route, schema, formatting, lint,
+build, and production-audit gates. Do not move the Coolify credential or API
+client into this process.
