@@ -27,6 +27,27 @@ export function createOctokit(token: string): Octokit {
   return new Octokit({ auth: token });
 }
 
+/**
+ * Create the Actions-runs client. Runs are monitoring state, so every request
+ * must bypass conditional and intermediary caches; see upstream issue #4.
+ */
+export function createRunsOctokit(token: string): Octokit {
+  const octokit = createOctokit(token);
+
+  octokit.hook.before("request", (options) => {
+    const headers = { ...options.headers } as Record<string, string>;
+    for (const name of Object.keys(headers)) {
+      if (/^(if-none-match|if-modified-since)$/i.test(name)) {
+        delete headers[name];
+      }
+    }
+    headers["cache-control"] = "no-cache";
+    options.headers = headers as typeof options.headers;
+  });
+
+  return octokit;
+}
+
 export async function fetchAuthenticatedUser(
   octokit: Octokit,
 ): Promise<string> {
@@ -137,14 +158,29 @@ export async function fetchActiveWorkflowIds(
   owner: string,
   repo: string,
 ): Promise<Set<number>> {
-  const workflows = await octokit.paginate(octokit.actions.listRepoWorkflows, {
-    owner,
-    repo,
-    per_page: 100,
-  });
-  return new Set(
-    workflows.filter((w) => w.state === "active").map((w) => w.id),
-  );
+  const ids = new Set<number>();
+  let page = 1;
+
+  // Do not use octokit.paginate here. It mutates response.data while
+  // normalizing the workflows collection, which also mutates the ETag hook's
+  // cached object and turns later 304 responses into an empty collection.
+  while (true) {
+    const { data } = await octokit.actions.listRepoWorkflows({
+      owner,
+      repo,
+      per_page: 100,
+      page,
+    });
+
+    for (const workflow of data.workflows) {
+      if (workflow.state === "active") ids.add(workflow.id);
+    }
+
+    if (data.workflows.length < 100 || page * 100 >= data.total_count) break;
+    page++;
+  }
+
+  return ids;
 }
 
 /**
@@ -153,24 +189,18 @@ export async function fetchActiveWorkflowIds(
  * activeWorkflowIds is provided, filters out runs for deleted/disabled workflows.
  */
 export async function fetchWorkflowRuns(
-  octokit: Octokit,
+  runsOctokit: Octokit,
   owner: string,
   repo: string,
   activeWorkflowIds?: Set<number>,
 ): Promise<WorkflowRun[]> {
-  // Observed in production: conditional requests against this endpoint can
-  // return 304 while an individual run's status has actually changed on
-  // GitHub (e.g. queued → in_progress, or a brand-new run that just started),
-  // so the dashboard stays stale for the lifetime of the run. Root cause
-  // unclear — could be coarse ETag generation upstream, a CDN edge serving a
-  // stale ETag, or something else. Either way, the endpoint can't be trusted
-  // with If-None-Match, so we always bypass the ETag cache here. We still
-  // record the response's fresh ETag for any future caller that does opt in.
-  const { data } = await octokit.actions.listWorkflowRunsForRepo({
+  // This endpoint has served stale queued/in_progress bodies under conditional
+  // requests. Callers must pass the dedicated client that has no ETag hook.
+  // Keep metadata on the cached client; see upstream issue #4.
+  const { data } = await runsOctokit.actions.listWorkflowRunsForRepo({
     owner,
     repo,
     per_page: 100,
-    headers: { [SKIP_ETAG_CACHE_HEADER]: "1" },
   });
 
   // Keep all active runs + latest completed run per workflow.
@@ -250,6 +280,7 @@ export interface FetchResult {
  */
 export async function fetchAllRuns(
   octokit: Octokit,
+  runsOctokit: Octokit,
   repos: string[],
   cachedBranches: Record<string, string>,
   maxRepos?: number,
@@ -294,7 +325,7 @@ export async function fetchAllRuns(
           ]);
 
           const result = await fetchWorkflowRuns(
-            octokit,
+            runsOctokit,
             owner,
             repo,
             activeIds,

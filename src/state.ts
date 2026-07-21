@@ -6,6 +6,7 @@ import { EtagCache, installEtagHook } from "./services/etagCache.js";
 import type { RepoStats } from "./services/github.js";
 import {
   createOctokit,
+  createRunsOctokit,
   extractToken,
   fetchActiveWorkflowIds,
   fetchAllRuns,
@@ -23,7 +24,13 @@ import type { AppConfig, WorkflowRun } from "./types.js";
 
 export interface AppState {
   config: AppConfig;
+  /** Cached client for repository/workflow metadata and rate-limit calls. */
   octokit: Octokit;
+  /**
+   * Uncached client used only for Actions-run state. Do not install the ETag
+   * hook on this client; see https://github.com/photostructure/gha-dash/issues/4.
+   */
+  runsOctokit: Octokit;
   etagCache: EtagCache;
   username: string;
   cache: Cache<WorkflowRun[]>;
@@ -56,6 +63,7 @@ export function getAppState(): AppState {
 export async function initAppState(): Promise<AppState> {
   const token = extractToken();
   const octokit = createOctokit(token);
+  const runsOctokit = createRunsOctokit(token);
   const etagCache = new EtagCache();
   installEtagHook(octokit, etagCache);
 
@@ -79,6 +87,7 @@ export async function initAppState(): Promise<AppState> {
   state = {
     config,
     octokit,
+    runsOctokit,
     etagCache,
     username: user.login,
     cache,
@@ -154,7 +163,13 @@ async function doRefresh(): Promise<void> {
     const maxRepos = computeBudget(state, repos.length);
 
     const { runs, stats, errors, discoveredBranches, workflowIds } =
-      await fetchAllRuns(state.octokit, repos, state.config.branches, maxRepos);
+      await fetchAllRuns(
+        state.octokit,
+        state.runsOctokit,
+        repos,
+        state.config.branches,
+        maxRepos,
+      );
 
     for (const [repo, repoRuns] of runs) {
       if (repoRuns.length > 0) {
@@ -230,6 +245,7 @@ async function doRefresh(): Promise<void> {
       try {
         const newToken = extractToken();
         state.octokit = createOctokit(newToken);
+        state.runsOctokit = createRunsOctokit(newToken);
         installEtagHook(state.octokit, state.etagCache);
         console.log("Re-extracted GitHub token after 401");
       } catch {
@@ -389,7 +405,12 @@ export async function refreshRepo(fullName: string): Promise<void> {
     state.repoStats.set(fullName, repoStats);
     state.workflowIds.set(fullName, activeIds);
 
-    const runs = await fetchWorkflowRuns(state.octokit, owner, repo, activeIds);
+    const runs = await fetchWorkflowRuns(
+      state.runsOctokit,
+      owner,
+      repo,
+      activeIds,
+    );
 
     if (runs.length > 0) {
       state.cache.set(fullName, runs);
@@ -432,7 +453,12 @@ export async function refreshRepoActive(fullName: string): Promise<void> {
   const cachedIds = state.workflowIds.get(fullName);
 
   try {
-    const runs = await fetchWorkflowRuns(state.octokit, owner, repo, cachedIds);
+    const runs = await fetchWorkflowRuns(
+      state.runsOctokit,
+      owner,
+      repo,
+      cachedIds,
+    );
 
     if (runs.length > 0) {
       state.cache.set(fullName, runs);

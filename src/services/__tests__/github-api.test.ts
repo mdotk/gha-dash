@@ -4,6 +4,7 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { EtagCache, installEtagHook } from "../etagCache.js";
 import {
+  createRunsOctokit,
   fetchActiveWorkflowIds,
   fetchRepoMeta,
   fetchWorkflowRuns,
@@ -223,19 +224,17 @@ describe("fetchWorkflowRuns", () => {
     expect(runs).toHaveLength(4);
   });
 
-  it("never sends If-None-Match on the runs endpoint, even with a cached ETag", async () => {
-    // GitHub's actions/runs ETag has been observed returning 304 while a
-    // run's status actually changed (queued → in_progress, or a new run
-    // arrived). The dashboard then sticks on stale data, which is why the
-    // refresh button "doesn't refresh" and auto-refresh "sometimes works."
-    // fetchWorkflowRuns must always bypass the ETag cache regardless of
-    // whether a cached entry exists.
+  it("does not add a conditional header to the uncached runs client", async () => {
     const seenIfNoneMatch: (string | null)[] = [];
+    const seenIfModifiedSince: (string | null)[] = [];
+    const seenCacheControl: (string | null)[] = [];
     server.use(
       http.get(
         "https://api.github.com/repos/owner/repo/actions/runs",
         ({ request }) => {
           seenIfNoneMatch.push(request.headers.get("if-none-match"));
+          seenIfModifiedSince.push(request.headers.get("if-modified-since"));
+          seenCacheControl.push(request.headers.get("cache-control"));
           return HttpResponse.json(
             {
               total_count: 1,
@@ -252,31 +251,17 @@ describe("fetchWorkflowRuns", () => {
       ),
     );
 
-    const cache = new EtagCache();
-    const octokit = makeOctokit();
-    installEtagHook(octokit, cache);
-
-    // Prime cache with a stale ETag for this URL — a conditional request
-    // would 304 here and return the empty stale body.
-    const key = EtagCache.keyFor({
-      method: "GET",
-      url: "/repos/{owner}/{repo}/actions/runs",
-      owner: "owner",
-      repo: "repo",
-      per_page: 100,
-    });
-    cache.set(key, {
-      etag: '"runs-v1"',
-      data: { total_count: 0, workflow_runs: [] },
-    });
-
-    const runs = await fetchWorkflowRuns(octokit, "owner", "repo");
+    const runs = await fetchWorkflowRuns(
+      createRunsOctokit("test-token"),
+      "owner",
+      "repo",
+    );
 
     expect(seenIfNoneMatch).toEqual([null]);
+    expect(seenIfModifiedSince).toEqual([null]);
+    expect(seenCacheControl).toEqual(["no-cache"]);
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe("in_progress");
-    // Cache should be refreshed with the new ETag for any future opt-in caller.
-    expect(cache.get(key)?.etag).toBe('"runs-v2"');
   });
 
   it("computes duration for completed runs", async () => {
@@ -339,5 +324,44 @@ describe("fetchActiveWorkflowIds", () => {
     const ids = await fetchActiveWorkflowIds(makeOctokit(), "owner", "repo");
     expect(ids).toEqual(new Set([100, 200]));
     expect(ids.has(300)).toBe(false);
+  });
+
+  it("preserves workflow IDs across an ETag-backed 304", async () => {
+    const etag = '"workflows-v1"';
+    let requests = 0;
+    server.use(
+      http.get(
+        "https://api.github.com/repos/owner/repo/actions/workflows",
+        ({ request }) => {
+          requests++;
+          if (request.headers.get("if-none-match") === etag) {
+            return new HttpResponse(null, { status: 304 });
+          }
+          return HttpResponse.json(
+            {
+              total_count: 2,
+              workflows: [
+                { id: 100, state: "active" },
+                { id: 200, state: "active" },
+              ],
+            },
+            { headers: { etag } },
+          );
+        },
+      ),
+    );
+
+    const octokit = makeOctokit();
+    const cache = new EtagCache();
+    installEtagHook(octokit, cache);
+
+    expect(await fetchActiveWorkflowIds(octokit, "owner", "repo")).toEqual(
+      new Set([100, 200]),
+    );
+    expect(await fetchActiveWorkflowIds(octokit, "owner", "repo")).toEqual(
+      new Set([100, 200]),
+    );
+    expect(requests).toBe(2);
+    expect(cache.hits()).toBe(1);
   });
 });
