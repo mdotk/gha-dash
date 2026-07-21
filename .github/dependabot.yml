@@ -1,0 +1,28 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Pacific/Auckland
+    open-pull-requests-limit: 5
+    groups:
+      compatible-development-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:30"
+      timezone: Pacific/Auckland
+    open-pull-requests-limit: 3
