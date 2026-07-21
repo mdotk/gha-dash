@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { readCoolifySnapshot } from "../services/coolifySnapshot.js";
 import { dispatchWorkflow, getDispatchInfo } from "../services/dispatch.js";
 import { groupRunsByRepo } from "../services/workflows.js";
 import {
@@ -13,6 +14,22 @@ import type { CacheEntry, WorkflowRun } from "../types.js";
 
 export function apiRoutes(): Router {
   const router = Router();
+
+  router.get("/coolify", async (_req, res) => {
+    try {
+      const snapshot = await readCoolifySnapshot();
+      res.setHeader("Cache-Control", "no-store");
+      res.json(snapshot);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      res.status(code === "ENOENT" ? 503 : 500).json({
+        error:
+          code === "ENOENT"
+            ? "Coolify monitoring is not configured"
+            : "Coolify monitoring state is unavailable",
+      });
+    }
+  });
 
   // GET /api/workflows — grouped workflow data + errors + rate limit
   router.get("/workflows", (_req, res) => {

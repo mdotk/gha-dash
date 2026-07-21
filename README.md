@@ -44,6 +44,13 @@ Config lives at `~/.config/gha-dash/config.json` (Linux/macOS) or `%APPDATA%/gha
 
 Use the Settings page to add/remove repos and configure options interactively.
 
+### Optional Coolify deployment state
+
+The dashboard exposes a read-only Coolify panel when a versioned, sanitized
+snapshot exists at `/var/lib/coolify-monitor/state.json`. Override the path with
+`COOLIFY_STATE_PATH`. The dashboard never accepts or uses a Coolify API token;
+an external least-privilege collector owns API access and the snapshot contract.
+
 ## Rate limiting
 
 gha-dash caches aggressively to stay within GitHub's 5,000 requests/hour limit:

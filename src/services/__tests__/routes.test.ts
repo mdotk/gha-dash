@@ -1,3 +1,6 @@
+import { writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowRun } from "../../types.js";
@@ -88,6 +91,31 @@ describe("API routes", () => {
     expect(res.body.repos).toEqual(["owner/repo"]);
     expect(res.body.availableRepos).toEqual(["owner/repo", "owner/other"]);
     expect(res.body.refreshInterval).toBe(60);
+  });
+
+  it("GET /api/coolify returns only the validated snapshot contract", async () => {
+    const path = join(tmpdir(), `gha-dash-route-coolify-${process.pid}.json`);
+    await writeFile(
+      path,
+      JSON.stringify({
+        schemaVersion: 1,
+        source: "https://app.coolify.io",
+        generatedAt: "2026-07-21T22:39:21Z",
+        lastAttemptAt: "2026-07-21T22:39:21Z",
+        staleAfterSeconds: 180,
+        error: null,
+        resources: [],
+      }),
+      { mode: 0o600 },
+    );
+    vi.stubEnv("COOLIFY_STATE_PATH", path);
+    const res = await request(app).get("/api/coolify");
+    vi.unstubAllEnvs();
+
+    expect(res.status).toBe(200);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.body.source).toBe("https://app.coolify.io");
+    expect(res.body.resources).toEqual([]);
   });
 
   it("PUT /api/config updates config and returns it", async () => {
