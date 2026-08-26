@@ -36,7 +36,7 @@ Config lives at `~/.config/gha-dash/config.json` (Linux/macOS) or `%APPDATA%/gha
 | Field             | Default          | Description                                                |
 | ----------------- | ---------------- | ---------------------------------------------------------- |
 | `repos`           | `[]`             | Repos to monitor. Empty = discover all your repos.         |
-| `refreshInterval` | `3600`           | Seconds between API refreshes.                             |
+| `refreshInterval` | `3600`           | Seconds between full metadata refreshes.                   |
 | `rateLimitFloor`  | `500`            | Stop refreshing when API calls remaining drops below this. |
 | `rateBudgetPct`   | `50`             | Max percentage of rate limit to use per refresh cycle.     |
 | `hiddenWorkflows` | `["dependabot"]` | Hide workflows whose name contains any of these.           |
@@ -57,6 +57,8 @@ gha-dash caches aggressively to stay within GitHub's 5,000 requests/hour limit:
 
 - Default branch names are cached permanently (fetched once per repo)
 - Workflow data is cached to disk — restarts don't refetch
+- A lightweight runs-only request discovers new activity in every configured repository once per minute
+- Repositories with known active runs are checked every 30 seconds until completion or cancellation
 - Refreshes skip entirely when remaining calls are below the floor
 - When budget is tight, repos are refreshed in rotating batches
 

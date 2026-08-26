@@ -18,6 +18,7 @@ import {
 } from "./services/github.js";
 import {
   computeNextRefresh,
+  selectAffordableRunPollRepos,
   updateDurationHistory,
 } from "./services/scheduler.js";
 import type { AppConfig, WorkflowRun } from "./types.js";
@@ -52,6 +53,7 @@ export const stateEvents = new EventEmitter();
 let refreshPromise: Promise<void> | null = null;
 let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
 let fullRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
+let lastRunDiscoveryAt = 0;
 const FULL_REFRESH_COUNTED_CALLS_PER_REPO = 2;
 
 export function getAppState(): AppState {
@@ -170,6 +172,7 @@ async function doRefresh(): Promise<void> {
         state.config.branches,
         maxRepos,
       );
+    lastRunDiscoveryAt = Date.now();
 
     for (const [repo, repoRuns] of runs) {
       if (repoRuns.length > 0) {
@@ -326,8 +329,10 @@ function scheduleFullRefresh(): void {
 }
 
 /**
- * Schedule a targeted refresh for only repos with active runs. If no repos
- * have active runs, no timer is set (the full refresh handles idle mode).
+ * Schedule the lightweight Actions-run monitor. It discovers new runs across
+ * all configured repositories every minute and checks already-active
+ * repositories every 30 seconds. The hourly full refresh remains responsible
+ * for repository metadata, workflow inventory and PR/issue statistics.
  */
 function scheduleActiveRefresh(): void {
   if (!state) return;
@@ -336,26 +341,62 @@ function scheduleActiveRefresh(): void {
 
   const configuredIntervalMs = state.config.refreshInterval * 1000;
   const cachedEntries = getCachedRunEntries(state);
-  const { delayMs, activeRepos } = computeNextRefresh(
+  const plan = computeNextRefresh(
     cachedEntries,
     state.config.workflowDurations,
     configuredIntervalMs,
+    Date.now(),
+    lastRunDiscoveryAt,
   );
-
-  if (activeRepos.length === 0) return; // idle — full refresh timer handles it
+  const { delayMs, activeRepos } = plan;
+  const plannedRepos = plan.refreshAllRepos ? state.config.repos : activeRepos;
 
   console.log(
-    `Active runs in ${activeRepos.length} repo(s), targeted refresh in ${Math.round(delayMs / 1000)}s`,
+    `${plan.refreshAllRepos ? "Run discovery" : `Active runs in ${activeRepos.length} repo(s)`}, runs-only refresh in ${Math.round(delayMs / 1000)}s`,
   );
 
   refreshTimeout = setTimeout(async () => {
-    for (const repo of activeRepos) {
-      if (refreshing) break; // full refresh took over — bail out
-      await refreshRepoActive(repo);
-    }
-    if (!refreshing) {
-      stateEvents.emit("refreshed");
-      scheduleActiveRefresh(); // reschedule for next check
+    if (!state || refreshing) return;
+
+    try {
+      try {
+        state.rateLimit = {
+          ...(await fetchRateLimit(state.octokit)),
+          checkedAt: new Date(),
+        };
+      } catch {
+        // Preserve the last known quota state and proceed cautiously.
+      }
+
+      const repos = selectAffordableRunPollRepos(
+        plannedRepos,
+        state.rateLimit,
+        state.config.rateLimitFloor,
+      );
+      if (repos.length < plannedRepos.length) {
+        console.log(
+          `Runs-only refresh limited to ${repos.length}/${plannedRepos.length} repo(s) by rate-limit floor ${state.config.rateLimitFloor}.`,
+        );
+      }
+      if (plan.refreshAllRepos) lastRunDiscoveryAt = Date.now();
+
+      for (const repo of repos) {
+        if (refreshing) break; // full refresh took over — bail out
+        await refreshRepoActive(repo);
+      }
+
+      try {
+        state.rateLimit = {
+          ...(await fetchRateLimit(state.octokit)),
+          checkedAt: new Date(),
+        };
+      } catch {
+        // Non-critical; retain the pre-poll quota observation.
+      }
+
+      if (!refreshing) stateEvents.emit("refreshed");
+    } finally {
+      if (!refreshing) scheduleActiveRefresh();
     }
   }, delayMs);
 }
@@ -438,7 +479,7 @@ export async function refreshRepo(fullName: string): Promise<void> {
 /**
  * Targeted active-poll refresh for a single repo. Only fetches workflow runs
  * — skips repo metadata, workflow list, and PR/issue stats since none of
- * those change at the active-poll cadence (every ~15s while a run is in
+ * those change at the runs-only cadence (every 30s while a run is in
  * flight). Drops 4 API calls per repo to 1 vs. refreshRepo().
  *
  * Uses state.workflowIds (captured during the most recent full refresh) to
@@ -499,6 +540,7 @@ export function stopBackgroundRefresh(): void {
  */
 export function __setStateForTests(s: AppState | null): void {
   state = s;
+  if (s === null) lastRunDiscoveryAt = 0;
 }
 
 export async function updateConfig(updates: Partial<AppConfig>): Promise<void> {

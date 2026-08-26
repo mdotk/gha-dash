@@ -4,7 +4,7 @@ export interface AppConfig {
   branches: Record<string, string>; // "owner/repo" → default branch name
   hiddenWorkflows: string[]; // hide workflows whose name contains any of these (case-insensitive)
   workflowDurations: Record<string, number[]>; // workflowPath → last N completed durations (ms)
-  refreshInterval: number; // seconds, default 300
+  refreshInterval: number; // seconds between full metadata refreshes, default 3600
   rateLimitFloor: number; // stop refreshing below this many remaining calls
   rateBudgetPct: number; // use at most this % of remaining rate limit per cycle
   port: number; // default 3131
