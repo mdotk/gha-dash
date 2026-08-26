@@ -7,57 +7,91 @@ export const ACTIVE_STATUSES = new Set([
   "pending",
 ]);
 export const MIN_REFRESH_INTERVAL_MS = 15_000;
-export const DEFAULT_EXPECTED_DURATION_MS = 300_000; // 5 minutes
+export const ACTIVE_REFRESH_INTERVAL_MS = 30_000;
+export const DISCOVERY_REFRESH_INTERVAL_MS = 60_000;
 export const MAX_DURATION_SAMPLES = 5;
 
 export interface AdaptiveRefreshResult {
   delayMs: number;
-  /** Repos with active runs that should be refreshed. Empty = no active runs (idle). */
+  /** Repos currently known to have active runs. */
   activeRepos: string[];
+  /** True when the next poll must inspect every configured repository. */
+  refreshAllRepos: boolean;
 }
 
 /**
- * Compute the delay until the next targeted refresh based on active workflow
- * runs and their historical durations. Returns configuredIntervalMs with no
- * active repos when idle. When active runs exist, returns the time until the
- * earliest expected completion (clamped to [MIN_REFRESH_INTERVAL_MS,
- * configuredIntervalMs]) and the set of repos that have active runs.
+ * Plan the lightweight Actions-run poll independently from the hourly full
+ * metadata refresh. Every configured repository is inspected at least once a
+ * minute so newly started runs can be discovered. Repositories already known
+ * to be active are checked every 30 seconds. Historical run duration is not a
+ * freshness signal: a long-running workflow must not make the dashboard sleep
+ * until its predicted completion.
  */
 export function computeNextRefresh(
   cachedRuns: Iterable<[string, WorkflowRun[]]>,
-  workflowDurations: Record<string, number[]>,
+  _workflowDurations: Record<string, number[]>,
   configuredIntervalMs: number,
   now: number = Date.now(),
+  lastDiscoveryAt: number = 0,
 ): AdaptiveRefreshResult {
-  let earliestTimeUntilDone = Infinity;
   const activeRepoSet = new Set<string>();
 
   for (const [repo, runs] of cachedRuns) {
     for (const run of runs) {
       if (!ACTIVE_STATUSES.has(run.status)) continue;
-
       activeRepoSet.add(repo);
-
-      const history = workflowDurations[run.workflowPath];
-      const expectedDuration =
-        median(history ?? []) ?? DEFAULT_EXPECTED_DURATION_MS;
-      const startedAtMs = new Date(run.startedAt).getTime();
-      const expectedDone = startedAtMs + expectedDuration;
-      const timeUntilDone = expectedDone - now;
-
-      earliestTimeUntilDone = Math.min(earliestTimeUntilDone, timeUntilDone);
     }
   }
 
-  if (activeRepoSet.size === 0) {
-    return { delayMs: configuredIntervalMs, activeRepos: [] };
-  }
-
-  const delayMs = Math.max(
-    MIN_REFRESH_INTERVAL_MS,
-    Math.min(earliestTimeUntilDone, configuredIntervalMs),
+  const discoveryIntervalMs = Math.min(
+    DISCOVERY_REFRESH_INTERVAL_MS,
+    configuredIntervalMs,
   );
-  return { delayMs, activeRepos: [...activeRepoSet] };
+  const activeIntervalMs = Math.min(
+    ACTIVE_REFRESH_INTERVAL_MS,
+    configuredIntervalMs,
+  );
+  const discoveryDelayMs = Math.max(
+    0,
+    lastDiscoveryAt + discoveryIntervalMs - now,
+  );
+  const activeDelayMs =
+    activeRepoSet.size > 0 ? activeIntervalMs : Number.POSITIVE_INFINITY;
+  const refreshAllRepos = discoveryDelayMs <= activeDelayMs;
+
+  const nextDelayMs = Math.min(discoveryDelayMs, activeDelayMs);
+  const delayMs = nextDelayMs <= 0 ? MIN_REFRESH_INTERVAL_MS : nextDelayMs;
+  return {
+    delayMs,
+    activeRepos: [...activeRepoSet],
+    refreshAllRepos,
+  };
+}
+
+/**
+ * Select a quota-safe subset for a runs-only poll. Each candidate costs one
+ * counted REST call. Rotation ensures repeated constrained discovery cycles do
+ * not permanently starve the same repositories.
+ */
+export function selectAffordableRunPollRepos(
+  candidates: string[],
+  rateLimit: { remaining: number; limit: number } | null,
+  floor: number,
+  now: number = Date.now(),
+): string[] {
+  if (!rateLimit) return candidates;
+
+  const affordable = Math.max(0, rateLimit.remaining - floor);
+  if (affordable >= candidates.length) return candidates;
+  if (affordable === 0 || candidates.length === 0) return [];
+
+  const count = Math.min(affordable, candidates.length);
+  const offset =
+    Math.floor(now / DISCOVERY_REFRESH_INTERVAL_MS) % candidates.length;
+  return Array.from(
+    { length: count },
+    (_, index) => candidates[(offset + index) % candidates.length],
+  );
 }
 
 /** Returns the median of a number array, or undefined if empty. */

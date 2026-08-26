@@ -58,7 +58,7 @@ export interface AppConfig {
   availableRepos: string[];
   branches: Record<string, string>;
   hiddenWorkflows: string[];
-  refreshInterval: number; // seconds, default 3600
+  refreshInterval: number; // seconds between full metadata refreshes, default 3600
   rateLimitFloor: number;
   rateBudgetPct: number;
   port: number; // default 3131
@@ -87,6 +87,23 @@ export type RunConclusion =
   | "skipped"
   | "timed_out";
 ```
+
+## Background Refresh Contract
+
+- The configured `refreshInterval` controls the full metadata refresh. That
+  refresh updates repository metadata, workflow inventory, PR/issue statistics,
+  branches, and recent runs; its default cadence is one hour.
+- A separate runs-only discovery request checks every configured repository at
+  least once per minute, allowing a build that starts while the dashboard is
+  idle to appear without a manual refresh.
+- A repository with a known queued or running workflow is checked every 30
+  seconds. Historical workflow duration is retained for display data only and
+  never delays the next status check.
+- The runs-only scheduler observes the same API floor as full refreshes. If
+  there is insufficient quota above the floor, it rotates through only the
+  affordable repositories or performs no counted requests at the floor.
+- Cached API responses remain available to the browser while GitHub is
+  unavailable or polling is backed off.
 
 ## API Routes
 

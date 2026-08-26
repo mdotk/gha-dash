@@ -1,0 +1,55 @@
+name: JavaScript install-script policy
+
+on:
+  pull_request:
+    paths:
+      [
+        "package.json",
+        "package-lock.json",
+        ".npmrc",
+        ".github/workflows/javascript-install-script-policy.yml",
+      ]
+  push:
+    branches: [main]
+    paths:
+      [
+        "package.json",
+        "package-lock.json",
+        ".npmrc",
+        ".github/workflows/javascript-install-script-policy.yml",
+      ]
+  schedule:
+    - cron: "37 5 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Standalone public install-script policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Set up exact Node.js runtime
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - name: Install exact npm without lifecycle scripts
+        run: npm install --global --ignore-scripts npm@11.17.0
+      - name: Enforce reviewed install scripts
+        run: |
+          npm ci --strict-allow-scripts
+          npm approve-scripts --allow-scripts-pending --json > "$RUNNER_TEMP/npm-pending-install-scripts.json"
+          node -e '
+            const report = require(process.argv[1]);
+            if (!Array.isArray(report.allowScripts) || report.allowScripts.length !== 0) {
+              console.error(JSON.stringify(report, null, 2));
+              throw new Error("npm install-script policy has unreviewed packages");
+            }
+          ' "$RUNNER_TEMP/npm-pending-install-scripts.json"
