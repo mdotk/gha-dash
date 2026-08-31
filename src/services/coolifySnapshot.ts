@@ -51,6 +51,7 @@ function validResource(value: unknown): value is CoolifyResourceSummary {
     nullableString(item.imageTag, 300) &&
     nullableString(item.repository, 500) &&
     typeof item.registered === "boolean" &&
+    (item.standby === undefined || typeof item.standby === "boolean") &&
     isString(item.dashboardUrl, 1000) &&
     item.dashboardUrl.startsWith("https://app.coolify.io/") &&
     validDeployment(item.activeDeployment) &&
