@@ -90,6 +90,7 @@ export interface CoolifyResourceSummary {
   imageTag: string | null;
   repository: string | null;
   registered: boolean;
+  standby?: boolean;
   dashboardUrl: string;
   activeDeployment: CoolifyDeploymentSummary | null;
   latestDeployment: CoolifyDeploymentSummary | null;

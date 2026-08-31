@@ -13,6 +13,9 @@ const healthyCount = computed(
       /^(running|healthy|running:healthy)$/i.test(resource.status),
     ).length,
 );
+const standbyCount = computed(
+  () => resources.value.filter((resource) => resource.standby === true).length,
+);
 const intentionallyStoppedCount = computed(
   () =>
     resources.value.filter(
@@ -23,13 +26,20 @@ const intentionallyStoppedCount = computed(
 );
 const attentionCount = computed(
   () =>
-    resources.value.length -
-    healthyCount.value -
-    intentionallyStoppedCount.value,
+    resources.value.filter(
+      (resource) =>
+        !/^(running|healthy|running:healthy)$/i.test(resource.status) &&
+        resource.standby !== true &&
+        !(
+          /^RETIRED\b/i.test(resource.name) &&
+          /exited|stopped/i.test(resource.status)
+        ),
+    ).length,
 );
 
 function statusClass(resource: CoolifyResourceSummary): string {
   if (resource.activeDeployment) return "coolify-status-pending";
+  if (resource.standby) return "coolify-status-neutral";
   if (/^(running|healthy|running:healthy)$/i.test(resource.status)) {
     return "coolify-status-success";
   }
@@ -37,6 +47,12 @@ function statusClass(resource: CoolifyResourceSummary): string {
     return "coolify-status-failure";
   }
   return "coolify-status-neutral";
+}
+
+function statusLabel(resource: CoolifyResourceSummary): string {
+  if (resource.activeDeployment) return "deploying";
+  if (resource.standby) return "standby";
+  return resource.status;
 }
 
 function deploymentLabel(resource: CoolifyResourceSummary): string {
@@ -63,8 +79,9 @@ function versionLabel(resource: CoolifyResourceSummary): string {
       <div>
         <h2 id="coolify-heading">Coolify deployments</h2>
         <p v-if="coolify.snapshot.value" class="coolify-summary">
-          {{ healthyCount }} healthy · {{ intentionallyStoppedCount }} retired ·
-          {{ attentionCount }} needs attention · updated
+          {{ healthyCount }} healthy · {{ standbyCount }} standby ·
+          {{ intentionallyStoppedCount }} retired · {{ attentionCount }} needs
+          attention · updated
           {{ relativeTime(coolify.snapshot.value.generatedAt) }}
         </p>
         <p v-else class="coolify-summary">Hosted Coolify resource state</p>
@@ -122,7 +139,7 @@ function versionLabel(resource: CoolifyResourceSummary): string {
             </td>
             <td>
               <span class="coolify-status" :class="statusClass(resource)">
-                {{ resource.activeDeployment ? "deploying" : resource.status }}
+                {{ statusLabel(resource) }}
               </span>
             </td>
             <td>

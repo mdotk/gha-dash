@@ -26,6 +26,7 @@ const validState = {
       imageTag: "sha-abc1234",
       repository: "example/app",
       registered: true,
+      standby: false,
       dashboardUrl:
         "https://app.coolify.io/project/p/environment/e/application/a",
       activeDeployment: null,
@@ -42,6 +43,24 @@ const validState = {
 describe("Coolify snapshot validation", () => {
   it("accepts the sanitized versioned contract", () => {
     expect(validateCoolifySnapshot(validState).resources).toHaveLength(1);
+  });
+
+  it("accepts legacy snapshots without a standby classification", () => {
+    const { standby, ...legacyResource } = validState.resources[0];
+    expect(standby).toBe(false);
+    expect(
+      validateCoolifySnapshot({ ...validState, resources: [legacyResource] })
+        .resources,
+    ).toHaveLength(1);
+  });
+
+  it("rejects a non-boolean standby classification", () => {
+    expect(() =>
+      validateCoolifySnapshot({
+        ...validState,
+        resources: [{ ...validState.resources[0], standby: "yes" }],
+      }),
+    ).toThrow("schema validation");
   });
 
   it("rejects non-Coolify links", () => {
