@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "runnerLabels": [],
+  "repositories": {
+    "mdotk/gha-dash": {
+      "requireRegisteredJobs": true,
+      "jobs": {
+        ".github/workflows/build.yml:required-validation": {
+          "fingerprint": "d68844f3860c4e86129446bb158127024364050a11501094f75142bfc1e85de3",
+          "executionClass": "public-ephemeral-validation",
+          "reason": "Preserve ephemeral public-repository validation, dependency installation and history scanning without access to private persistent runners.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        },
+        ".github/workflows/build.yml:gitleaks": {
+          "fingerprint": "bb13705aa29bddc0fc06193e81d972a8bca630022d40a4bc19bd40f43b3fab14",
+          "executionClass": "public-ephemeral-validation",
+          "reason": "Preserve ephemeral public-repository validation, dependency installation and history scanning without access to private persistent runners.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        },
+        ".github/workflows/build.yml:build": {
+          "fingerprint": "196c0432fb6e85b4c7ed90699a3b011670b2645b9622dc786ac04ec82f81b0a2",
+          "executionClass": "public-cross-platform",
+          "reason": "Preserve all nine Linux/macOS/Windows by Node-version compatibility legs in this public upstream fork.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        },
+        ".github/workflows/build.yml:publish": {
+          "fingerprint": "fc2996674a8a4bdf396d6b53907bad9d9c29974c381a249d9894a3b1422fd9e5",
+          "executionClass": "upstream-only-publication",
+          "reason": "Preserve the existing upstream-only manual publication condition; this fork cannot publish from a source push.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        },
+        ".github/workflows/javascript-install-script-policy.yml:policy": {
+          "fingerprint": "c605f3d73cfd6bdbe377fba1c7dd3f0660d7aad7700b796c24d4bc21f6e86820",
+          "executionClass": "public-ephemeral-validation",
+          "reason": "Preserve ephemeral public-repository validation, dependency installation and history scanning without access to private persistent runners.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        }
+      },
+      "hostedExceptions": {
+        ".github/workflows/build.yml:required-validation": {
+          "runsOn": "ubuntu-24.04",
+          "reason": "Preserve ephemeral public-repository validation, dependency installation and history scanning without access to private persistent runners.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        },
+        ".github/workflows/build.yml:gitleaks": {
+          "runsOn": "ubuntu-24.04",
+          "reason": "Preserve ephemeral public-repository validation, dependency installation and history scanning without access to private persistent runners.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        },
+        ".github/workflows/build.yml:build": {
+          "runsOnAlternatives": [
+            "ubuntu-latest",
+            "macos-latest",
+            "windows-latest"
+          ],
+          "reason": "Preserve all nine Linux/macOS/Windows by Node-version compatibility legs in this public upstream fork.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        },
+        ".github/workflows/build.yml:publish": {
+          "runsOn": "ubuntu-24.04",
+          "reason": "Preserve the existing upstream-only manual publication condition; this fork cannot publish from a source push.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        },
+        ".github/workflows/javascript-install-script-policy.yml:policy": {
+          "runsOn": "ubuntu-24.04",
+          "reason": "Preserve ephemeral public-repository validation, dependency installation and history scanning without access to private persistent runners.",
+          "approval": {
+            "source": "User-approved fleet CI runner-placement plan, 31 October 2026; preserve the public cross-platform matrix and upstream-only publication",
+            "date": "2026-10-31"
+          }
+        }
+      },
+      "selectors": {
+        ".github/workflows/build.yml:build": {
+          "expression": "${{ matrix.os }}",
+          "matrixKey": "os",
+          "alternatives": ["ubuntu-latest", "macos-latest", "windows-latest"],
+          "reason": "Preserve all nine Linux/macOS/Windows by Node-version compatibility legs in this public upstream fork."
+        }
+      }
+    }
+  },
+  "reusables": {},
+  "rollout": {
+    "sourceBase": "f867360fd072b44c1d7b6b5d944ad6a52a40a554",
+    "qualification": "Standalone public placement gate; existing nine-leg compatibility matrix, security checks and upstream-only publication remain unchanged."
+  }
+}
