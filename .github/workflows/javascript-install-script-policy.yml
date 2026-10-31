@@ -7,7 +7,9 @@ on:
         "package.json",
         "package-lock.json",
         ".npmrc",
-        ".github/workflows/javascript-install-script-policy.yml",
+        ".github/workflows/**",
+        ".github/ci-runner-placement.json",
+        "scripts/security/**",
       ]
   push:
     branches: [main]
@@ -16,7 +18,9 @@ on:
         "package.json",
         "package-lock.json",
         ".npmrc",
-        ".github/workflows/javascript-install-script-policy.yml",
+        ".github/workflows/**",
+        ".github/ci-runner-placement.json",
+        "scripts/security/**",
       ]
   schedule:
     - cron: "37 5 * * 3"
@@ -53,3 +57,7 @@ jobs:
               throw new Error("npm install-script policy has unreviewed packages");
             }
           ' "$RUNNER_TEMP/npm-pending-install-scripts.json"
+      - name: Verify public runner placement and regression contracts
+        run: |
+          node --test scripts/security/ci-runner-placement.node-test.mjs
+          node scripts/security/check-runner-placement.mjs
